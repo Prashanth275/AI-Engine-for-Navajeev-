@@ -1,71 +1,43 @@
-# Motherhood Companion (Preg-chatbot)
+﻿# Motherhood Companion AI — Local Ollama Backend
 
-### Your 24/7 AI maternal health guide  
-A modern, full-stack chatbot for pregnancy and baby care, powered by FastAPI (backend) and React (frontend).
+100% Local & Free AI backend for the Navajeev Motherhood Companion Flutter Application.
 
+## Architecture
+- **LLM Text Generation**: Ollama `llama3.2:3b` (local CPU/GPU)
+- **Vector Embeddings**: Ollama `nomic-embed-text` (768 dimensions)
+- **Vector Database**: Pinecone Serverless Index (`langchainvector-ollama`)
+- **API Framework**: FastAPI
+- **OpenAI Dependencies**: 0 (100% Free / Local inference)
 
-## Features
+## Setup & Running
 
-- **Conversational AI**: Ask questions about pregnancy, baby care, and maternal health.  
-- **FAQ Sidebar**: Frequently asked questions for quick access.  
-- **Modern UI**: Responsive, professional, and mobile-friendly chat interface.  
-- **24/7 Support**: Always online, always ready to help.  
-- **Easy Deployment**: Backend on Render, frontend on Vercel.
+1. **Install and run Ollama**:
+   ```bash
+   ollama pull llama3.2:3b
+   ollama pull nomic-embed-text
+   ```
 
+2. **Configure `.env`**:
+   ```env
+   PINECONE_API_KEY=your-pinecone-api-key
+   PINECONE_INDEX_NAME=langchainvector-ollama
+   OLLAMA_BASE_URL=http://localhost:11434
+   OLLAMA_MODEL=llama3.2:3b
+   OLLAMA_EMBED_MODEL=nomic-embed-text
+   ```
 
-## Demo
+3. **Ingest Documents (one-time setup)**:
+   ```bash
+   python bot.py
+   ```
 
-![preg-bot](https://github.com/user-attachments/assets/9ca6663b-d26f-4348-b97d-f775a2cacc3b)
+4. **Start the FastAPI Server**:
+   ```bash
+   uvicorn backend:app --host 0.0.0.0 --port 8000 --reload
+   ```
 
-
-
-## Getting Started (Local Development)
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/sathya-mithra-k/Preg-chatbot.git
-cd Preg-chatbot
-```
-### 2. Backend Setup (FastAPI)
-Install dependencies:
-
-```bash
-pip install -r requirements_backend.txt
-```
-Create a .env file with your API keys:
-
-``` Code snippet
-OPENAI_API_KEY=your_openai_key
-PINECONE_API_KEY=your_pinecone_key
-```
-Start the backend:
-
-```bash
-python backend.py
-```
-The backend runs at: http://localhost:8000
-
-### 3. Frontend Setup (React)
-
-```bash
-cd prebashgnancy-companion-frontend
-npm install
-```
-Create a .env file:
-
-```Code snippet
-REACT_APP_API_URL=http://localhost:8000/ask
-```
-
-Start the frontend:
-
-```bash
-npm start
-```
-The frontend runs at http://localhost:3000.
-
-### Technologies
-- Frontend: React, CSS
-- Backend: FastAPI, LangChain, OpenAI, Pinecone
-- Hosting: Vercel (frontend), Render (backend)
+## Endpoints
+- `GET /` — Health check & Ollama status
+- `POST /ask` — Knowledge RAG endpoint
+- `POST /ai/insight` — Module tracker insights (sleep, wellbeing, feeding, growth, etc.)
+- `POST /ai/recommend` — Personalized weekly guidance

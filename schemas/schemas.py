@@ -15,6 +15,7 @@ class QuestionResponse(BaseModel):
 
 class InsightRequest(BaseModel):
     module: str = Field(..., description="sleep | feeding | growth | trimester | wellbeing | appointments | notifications | dashboard")
+    subject: Optional[str] = None
     baby_age_weeks: Optional[int] = None
     data: dict = Field(..., description="Module-specific tracker data")
 

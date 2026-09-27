@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import math
 import urllib.request
@@ -14,7 +14,7 @@ load_dotenv(env_path)
 
 PINECONE_CACHE_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "pinecone_cache_ollama.json"
+    "pinecone_cache_cloud.json"
 )
 
 if os.path.exists(PINECONE_CACHE_FILE):
@@ -37,43 +37,33 @@ def save_pinecone_cache():
         print(f"[PINECONE NOTICE] Failed to save pinecone cache: {e}")
 
 
-def get_ollama_embed_config():
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-    model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-    return base_url, model
-
-
-def embed_text_with_ollama(text: str) -> List[float]:
+def embed_query_with_pinecone(text: str) -> List[float]:
     """
-    Generate 768-dimensional embedding vector locally via Ollama nomic-embed-text.
+    Generate 768-dimensional query embedding vector via Pinecone Hosted Inference (llama-text-embed-v2).
     """
-    base_url, model = get_ollama_embed_config()
-    req_data = json.dumps({
-        "model": model,
-        "prompt": text
-    }).encode("utf-8")
+    pinecone_api_key = os.getenv("PINECONE_API_KEY")
+    if not pinecone_api_key:
+        raise ValueError("Missing PINECONE_API_KEY in .env")
 
-    req = urllib.request.Request(
-        f"{base_url}/api/embeddings",
-        data=req_data,
-        headers={"Content-Type": "application/json"},
-        method="POST"
+    pc = Pinecone(api_key=pinecone_api_key)
+    response = pc.inference.embed(
+        model="llama-text-embed-v2",
+        inputs=[text],
+        parameters={
+            "input_type": "query",
+            "truncate": "END",
+            "dimension": 768
+        }
     )
-
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-        vec = data.get("embedding", [])
-        if not vec or len(vec) != 768:
-            raise ValueError(f"Expected 768-dim vector from {model}, got {len(vec) if vec else 0}")
-        return vec
+    return response.data[0].values
 
 
 def get_vectorstore():
     """
-    Returns configured Pinecone index client for langchainvector-ollama.
+    Returns configured Pinecone index client for langchainvector-cloud.
     """
     pinecone_api_key = os.getenv("PINECONE_API_KEY")
-    index_name = os.getenv("PINECONE_INDEX_NAME", "langchainvector-ollama")
+    index_name = os.getenv("PINECONE_INDEX_NAME", "langchainvector-cloud")
     if not pinecone_api_key:
         raise ValueError("Missing PINECONE_API_KEY in .env")
 
@@ -107,7 +97,7 @@ def simple_similarity(a: str, b: str) -> float:
 
 def similarity_search(vectorstore, query: str, k: int = 5) -> List[Tuple[str, Dict[str, Any]]]:
     """
-    Run similarity search against Pinecone vector store using Ollama nomic-embed-text (768 dim).
+    Run similarity search against Pinecone vector store using Pinecone Hosted Inference (llama-text-embed-v2, 768 dim).
     Returns list of (content, metadata) tuples.
     """
     if vectorstore is None:
@@ -124,22 +114,22 @@ def similarity_search(vectorstore, query: str, k: int = 5) -> List[Tuple[str, Di
     # 1. Exact Cache Check
     for item in pinecone_cache:
         if item.get("query") == query_clean:
-            print("[PINECONE EXACT CACHE HIT] (Ollama)")
+            print("[PINECONE EXACT CACHE HIT] (Cloud)")
             return item["result"]
 
     # 2. String Similarity Cache Check
     for item in pinecone_cache:
         score = simple_similarity(query_clean, item.get("query", ""))
         if score > 0.7:
-            print("[PINECONE STRING CACHE HIT] (Ollama)")
+            print("[PINECONE STRING CACHE HIT] (Cloud)")
             return item["result"]
 
-    # 3. Generate Local Query Embedding (nomic-embed-text)
+    # 3. Generate Hosted Query Embedding (llama-text-embed-v2)
     query_embedding = None
     try:
-        query_embedding = embed_text_with_ollama(query)
+        query_embedding = embed_query_with_pinecone(query)
     except Exception as e:
-        print("[PINECONE NOTICE] Local embedding failed:", repr(e))
+        print("[PINECONE NOTICE] Hosted embedding failed:", repr(e))
         query_embedding = None
 
     # 4. Semantic Similarity Cache Check
@@ -155,11 +145,11 @@ def similarity_search(vectorstore, query: str, k: int = 5) -> List[Tuple[str, Di
     if query_embedding is None:
         raise HTTPException(
             status_code=503,
-            detail="Failed to generate query embedding via Ollama nomic-embed-text. Is Ollama running?"
+            detail="Failed to generate query embedding via Pinecone Hosted Inference (llama-text-embed-v2)."
         )
 
     # 5. Query Pinecone
-    print("[PINECONE API CALL] Executing similarity search on langchainvector-ollama...")
+    print("[PINECONE API CALL] Executing similarity search on langchainvector-cloud...")
     try:
         response = vectorstore.query(
             vector=query_embedding,

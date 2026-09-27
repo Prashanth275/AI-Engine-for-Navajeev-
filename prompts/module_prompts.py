@@ -22,70 +22,49 @@ Write in warm, friendly, conversational tone. 5 to 7 sentences. No bullet points
 
 
 def sleep_prompt(data: dict) -> str:
-    logs_list = data.get('sleep_logs', [])
-    
-    logs = "\n".join([
-        f"- {log['date']}: {log['total_hours']} hrs, {log.get('night_wakings', 0)} wakings"
-        for log in logs_list
-    ])
+    metrics = data.get("metrics")
+    if not metrics:
+        logs_list = data.get("sleep_logs", [])
+        num_days = len(logs_list)
+        hours = [float(l.get("total_hours", 0.0)) for l in logs_list] if logs_list else [0.0]
+        avg_h = round(sum(hours) / max(num_days, 1), 1)
+        subject = data.get("subject", "mother")
+        metrics = {
+            "num_days": num_days,
+            "avg_hours": avg_h,
+            "min_hours": min(hours),
+            "max_hours": max(hours),
+            "avg_wakings": 0.0,
+            "trend": "stable" if num_days >= 3 else "insufficient_data",
+            "target_reference": "7-9 hours per night" if subject == "mother" else "age-appropriate rest",
+            "subject": subject,
+        }
 
-    subject = data.get('subject', 'baby')
-    context_note = data.get('context', '')
-    num_days = len(logs_list)
-    baby_age = data.get('baby_age_weeks')
+    subject_str = "postpartum/new mother" if metrics.get("subject") == "mother" else "infant"
+    wakings_note = f", with an average of {metrics['avg_wakings']} night wakings" if metrics.get("avg_wakings", 0) > 0 else ""
 
-    if subject == 'mother':
-        analysis_target = "a postpartum or pregnant mother"
-        norms_reference = "healthy adult sleep norms (7-9 hours per night)"
-        who_label = "adult sleep norms"
-    else:
-        age_str = f"{baby_age}-week-old baby" if baby_age else "infant"
-        analysis_target = f"a {age_str}"
-        norms_reference = f"WHO recommended sleep norms for a {age_str}"
-        who_label = "WHO norms for this age"
+    return f"""You are a compassionate maternal and infant health AI assistant.
 
-    return f"""
-You are a STRICT maternal health AI assistant specializing in sleep analysis.
+Write a personalized, encouraging sleep summary for a {subject_str}.
 
-CRITICAL RULES (DO NOT BREAK):
-- The dataset contains EXACTLY {num_days} days
-- You MUST ONLY refer to these {num_days} days
-- NEVER say 7 days, 10 days, weekly pattern, or anything else
-- If {num_days} = 4 → you MUST say "4 days"
-- Do NOT assume missing days
-- Do NOT generalize beyond given logs
-- Do NOT generate, assume, or modify any dates
-- Do NOT mention today's date
+Calculated Facts:
+- Logged period: {metrics['num_days']} days
+- Average sleep: {metrics['avg_hours']} hours per day (range: {metrics['min_hours']}h to {metrics['max_hours']}h){wakings_note}
+- Overall pattern: {metrics['trend']}
+- Target reference: {metrics['target_reference']}
 
-{context_note}
+Guidelines:
+- Write in a supportive, empathetic tone.
+- Do NOT repeat instructions, rules, or internal placeholders.
+- Do NOT invent future durations or claim arbitrary numbers of days.
+- "insight": 2 natural, user-facing sentences reflecting on the {metrics['num_days']}-day average of {metrics['avg_hours']} hours and {metrics['trend']} pattern.
+- "action": 1 practical, gentle recommendation to support rest.
 
-Analyze sleep for {analysis_target}.
-
-Sleep logs (ONLY {num_days} days):
-{logs}
-
-Compare against {norms_reference}.
-
-Do NOT assume or infer data for days not listed.
-Only analyse what is actually logged. Do not penalise for missing days.
-
-
-Return a JSON object with these exact keys:
+Return ONLY a valid JSON object matching this structure:
 {{
-  "insight": "must clearly refer to EXACTLY {num_days} days only",
-  "trend": "improving or declining or stable or insufficient_data",
-  "who_comparison": "comparison to {who_label}",
-  "action": "one specific recommendation",
-  "severity": "normal or watch or consult_doctor"
-}}
-
-STRICT:
-- If {num_days} <= 2 → trend = "insufficient_data"
-- DO NOT mention any number other than {num_days}
-- DO NOT invent extra days
-
-Return ONLY JSON.
-"""
+  "insight": "Empathetic 2-sentence summary of sleep observations",
+  "action": "Practical suggestion to support healthy rest"
+}}"""
 
 
 def feeding_prompt(data: dict) -> str:
@@ -248,26 +227,64 @@ Return only the JSON. No extra text."""
 
 
 def recommendation_prompt(data: dict) -> str:
-    return f"""You are a maternal health AI assistant generating a personalized weekly plan.
+    baby_age = data.get("baby_age_weeks")
+    pregnancy_week = data.get("pregnancy_week")
+    sleep_pattern = data.get("sleep_pattern", "not provided")
+    feeding_pattern = data.get("feeding_pattern", "not provided")
+    mood_trend = data.get("mood_trend", "stable")
+    top_concern = data.get("top_concern", "general guidance")
 
-User profile:
-- Baby age: {data.get('baby_age_weeks')} weeks
-- Sleep pattern: {data.get('sleep_pattern', 'not provided')}
-- Feeding pattern: {data.get('feeding_pattern', 'not provided')}
-- Mother mood trend: {data.get('mood_trend', 'stable')}
-- Pregnancy week (if applicable): {data.get('pregnancy_week', 'N/A')}
-- Top concern: {data.get('top_concern', 'general guidance')}
+    stage_desc = []
+    if baby_age is not None:
+        stage_desc.append(f"Baby age: {baby_age} weeks")
+    if pregnancy_week is not None:
+        stage_desc.append(f"Pregnancy week: {pregnancy_week}")
+    stage_str = ", ".join(stage_desc) if stage_desc else "Maternal / infant care stage"
 
-Return a JSON object with these exact keys:
+    return f"""You are a compassionate maternal and infant health AI assistant.
+Generate personalized, supportive weekly guidance based strictly on the provided profile.
+
+User Profile:
+- Stage: {stage_str}
+- Sleep pattern: {sleep_pattern}
+- Feeding pattern: {feeding_pattern}
+- Mother mood trend: {mood_trend}
+- Top concern: {top_concern}
+
+Strict Grounding & Quality Rules:
+- Use ONLY information provided in the user profile above.
+- Do NOT invent facts, symptoms, diagnoses, or clinical conditions about the mother or baby.
+- Do NOT invent exact clock times (e.g., do NOT mention times like "7:00 AM", "5:00 PM").
+- Do NOT create a rigid feeding or sleep timetable; keep suggestions flexible, cue-based, and responsive.
+- Do NOT invent arbitrary durations, quantities, or strict numerical measurements unless specified in user data.
+- Do NOT present generated recommendations as if they are past logged user data.
+- Ensure "dev_activity" is strictly appropriate for the baby's stated age in weeks (or pregnancy stage).
+- Ensure "top_concern" ({top_concern}) directly and meaningfully influences "daily_routine", "dev_activity", and "weekly_focus".
+- If a profile field is not provided, do not pretend that information is known.
+- For "nutrition_tips", provide general, supportive dietary suggestions only; do not invent medical diets or clinical requirements.
+- Avoid all medical diagnosis or treatment claims.
+
+Return ONLY a valid JSON object matching these exact keys and structure:
 {{
-  "daily_routine": ["routine step 1", "routine step 2", "routine step 3"],
-  "nutrition_tips": ["tip 1", "tip 2", "tip 3"],
-  "self_care": ["suggestion 1", "suggestion 2"],
-  "dev_activity": "one developmental activity to try this week",
-  "weekly_focus": "the main focus for this week in one sentence"
+  "daily_routine": [
+    "Practical, flexible routine habit 1 addressing {top_concern}",
+    "Practical, flexible routine habit 2",
+    "Practical, flexible routine habit 3"
+  ],
+  "nutrition_tips": [
+    "Supportive nutrition tip 1",
+    "Supportive nutrition tip 2",
+    "Supportive nutrition tip 3"
+  ],
+  "self_care": [
+    "Realistic, brief maternal self-care suggestion 1",
+    "Realistic, brief maternal self-care suggestion 2"
+  ],
+  "dev_activity": "One age-appropriate bonding or developmental activity tailored to baby age and {top_concern}",
+  "weekly_focus": "One clear, encouraging overarching focus sentence for this week"
 }}
 
-Return only the JSON. No extra text."""
+Return ONLY valid JSON. No markdown. No explanation outside the JSON."""
 
 
 # -------------------------------------------------------

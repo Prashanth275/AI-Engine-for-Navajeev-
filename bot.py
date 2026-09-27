@@ -1,55 +1,20 @@
-﻿import os
-import json
-import urllib.request
+import os
 from dotenv import load_dotenv
 from pinecone import Pinecone
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.embeddings import Embeddings
 
 # Load .env
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 load_dotenv(env_path)
 
-pinecone_api_key = os.getenv("PINECONE_API_KEY")
-ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-ollama_embed_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-index_name = os.getenv("PINECONE_INDEX_NAME", "langchainvector-ollama")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+TARGET_INDEX_NAME = os.getenv("PINECONE_CLOUD_INDEX_NAME", "langchainvector-cloud")
+EMBEDDING_MODEL = "llama-text-embed-v2"
+EMBEDDING_DIMENSION = 768
 
-if not pinecone_api_key:
+if not PINECONE_API_KEY:
     raise ValueError("Missing PINECONE_API_KEY in .env")
-
-
-class OllamaLocalEmbeddings(Embeddings):
-    """
-    Self-contained Ollama Embeddings class compatible with LangChain and Pinecone.
-    """
-    def __init__(self, base_url: str = "http://localhost:11434", model: str = "nomic-embed-text"):
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-
-    def embed_query(self, text: str) -> list[float]:
-        req_data = json.dumps({
-            "model": self.model,
-            "prompt": text
-        }).encode("utf-8")
-        
-        req = urllib.request.Request(
-            f"{self.base_url}/api/embeddings",
-            data=req_data,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("embedding", [])
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        embeddings = []
-        for text in texts:
-            embeddings.append(self.embed_query(text))
-        return embeddings
 
 
 def load_and_split(pdf_path: str):
@@ -59,41 +24,62 @@ def load_and_split(pdf_path: str):
     return splitter.split_documents(docs)
 
 
+def embed_passages_with_pinecone(pc: Pinecone, texts: list[str]) -> list[list[float]]:
+    """
+    Generate 768-dimensional embeddings using Pinecone Hosted Inference API (llama-text-embed-v2).
+    """
+    response = pc.inference.embed(
+        model=EMBEDDING_MODEL,
+        inputs=texts,
+        parameters={
+            "input_type": "passage",
+            "truncate": "END",
+            "dimension": EMBEDDING_DIMENSION
+        }
+    )
+    return [item.values for item in response.data]
+
+
 def main():
-    print("--------------------------------------------------")
-    print("[INGESTION] Ingesting documents into Pinecone (Ollama Edition)...")
-    print(f"[CONFIG] Embedding Model: {ollama_embed_model} at {ollama_base_url}")
-    print(f"[CONFIG] Pinecone Target Index: {index_name}")
+    print("==================================================")
+    print("PINECONE HOSTED EMBEDDING INGESTION (CLOUD)")
+    print("==================================================")
+    print(f"[CONFIG] Embedding Model: {EMBEDDING_MODEL} (Hosted Inference)")
+    print(f"[CONFIG] Embedding Dimension: {EMBEDDING_DIMENSION}")
+    print(f"[CONFIG] Target Pinecone Index: {TARGET_INDEX_NAME}")
 
-    embeddings = OllamaLocalEmbeddings(base_url=ollama_base_url, model=ollama_embed_model)
+    pc = Pinecone(api_key=PINECONE_API_KEY)
 
-    # 1. Verify embedding dimension
-    test_vector = embeddings.embed_query("Maternal and Infant Health Test")
-    dim = len(test_vector)
-    print(f"[VERIFIED] Embedding dimension: {dim} (Expected: 768)")
-    if dim != 768:
-        raise ValueError(f"Unexpected embedding dimension: {dim}. Expected 768.")
+    # 1. Verify embedding dimension and API connectivity
+    print("\n[STEP 1] Verifying Pinecone hosted embedding API...")
+    test_vectors = embed_passages_with_pinecone(pc, ["Maternal and Infant Health Test Passage"])
+    dim = len(test_vectors[0])
+    print(f"[VERIFIED] Pinecone Hosted Embedding Dimension: {dim} (Expected: {EMBEDDING_DIMENSION})")
+    if dim != EMBEDDING_DIMENSION:
+        raise ValueError(f"Unexpected embedding dimension: {dim}. Expected {EMBEDDING_DIMENSION}.")
 
     # 2. Load and split PDF
     pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "JOURNEY OF THE FIRST 100 DAYS.pdf")
-    print(f"[LOADER] Loading PDF from: {pdf_path}")
+    print(f"\n[STEP 2] Loading and splitting PDF from: {pdf_path}")
     documents = load_and_split(pdf_path)
     total_docs = len(documents)
-    print(f"[LOADER] Total chunks created: {total_docs}")
+    print(f"[LOADER] Total chunks created: {total_docs} (chunk_size=600, chunk_overlap=80)")
 
-    # 3. Connect to existing Pinecone index
-    pc = Pinecone(api_key=pinecone_api_key)
-    index = pc.Index(index_name)
-    print(f"[PINECONE] Connected to Pinecone index: {index_name}")
+    # 3. Connect to target Pinecone index
+    print(f"\n[STEP 3] Connecting to Pinecone index: {TARGET_INDEX_NAME}...")
+    index = pc.Index(TARGET_INDEX_NAME)
+    print(f"[PINECONE] Successfully connected to: {TARGET_INDEX_NAME}")
 
-    # 4. Embed and Upsert in batches with deterministic IDs to prevent duplicate vectors
-    batch_size = 25
-    print(f"[PROGRESS] Embedding and uploading {total_docs} vectors in batches of {batch_size}...")
+    # 4. Embed and Upsert in batches using deterministic IDs
+    batch_size = 50
+    print(f"\n[STEP 4] Embedding and uploading {total_docs} vectors in batches of {batch_size}...")
 
     for i in range(0, total_docs, batch_size):
         batch = documents[i:i + batch_size]
         texts = [doc.page_content for doc in batch]
-        batch_embeddings = embeddings.embed_documents(texts)
+        
+        # Call Pinecone Hosted Inference Embeddings
+        batch_embeddings = embed_passages_with_pinecone(pc, texts)
         
         vectors_to_upsert = []
         for j, (doc, vector) in enumerate(zip(batch, batch_embeddings)):
@@ -107,13 +93,17 @@ def main():
             })
             
         index.upsert(vectors=vectors_to_upsert)
-        print(f"  -> Uploaded {min(i + batch_size, total_docs)}/{total_docs} vectors")
+        print(f"  -> Uploaded chunks {i} to {min(i + batch_size, total_docs) - 1} ({min(i + batch_size, total_docs)}/{total_docs})")
 
     # 5. Confirm index stats
+    print("\n[STEP 5] Fetching updated index statistics...")
     stats = index.describe_index_stats()
-    print("--------------------------------------------------")
-    print(f"[COMPLETE] Ingestion Complete! Index stats: {stats}")
-    print("--------------------------------------------------")
+    print("==================================================")
+    print(f"[COMPLETE] Ingestion Complete!")
+    print(f"Target Index: {TARGET_INDEX_NAME}")
+    print(f"Total Vector Count: {stats.total_vector_count}")
+    print(f"Dimension: {stats.dimension}")
+    print("==================================================")
 
 
 if __name__ == "__main__":

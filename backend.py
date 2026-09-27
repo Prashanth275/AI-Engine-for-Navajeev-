@@ -1,4 +1,4 @@
-﻿import os
+import os
 from dotenv import load_dotenv
 
 # Explicitly load .env from current directory first
@@ -40,8 +40,8 @@ vectorstore = None
 async def startup_event():
     global vectorstore
     print("--------------------------------------------------")
-    print("[STARTUP] Initializing Motherhood Companion AI (Ollama Local)...")
-    base_url, model = get_ollama_config()
+    print("[STARTUP] Initializing Motherhood Companion AI...")
+    base_url, model, *_ = get_ollama_config()
     print(f"[CONFIG] Ollama URL: {base_url} | Model: {model}")
     
     health = check_ollama_health()
@@ -66,7 +66,7 @@ async def startup_event():
 
 @app.get("/", response_model=HealthResponse)
 async def root():
-    base_url, model = get_ollama_config()
+    base_url, model, *_ = get_ollama_config()
     health = check_ollama_health()
     
     ollama_status = "connected" if health.get("available") and health.get("model_installed") else "offline_or_model_missing"
@@ -111,6 +111,9 @@ async def get_insight(request: InsightRequest):
         if request.baby_age_weeks is not None:
             data["baby_age_weeks"] = request.baby_age_weeks
 
+        if request.subject is not None and "subject" not in data:
+            data["subject"] = request.subject
+
         result = run_insight(request.module, data)
 
         return InsightResponse(
@@ -148,4 +151,6 @@ async def get_recommendation(request: RecommendRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+

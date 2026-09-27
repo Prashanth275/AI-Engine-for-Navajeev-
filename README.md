@@ -41,7 +41,6 @@ OLLAMA_MODEL=gpt-oss:20b
 PORT=8000
 ```
 
-> **Note**: The values above are placeholders. Never commit actual API keys or secret tokens to source control.
 
 ### 2. Install Dependencies
 

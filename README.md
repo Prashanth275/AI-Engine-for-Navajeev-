@@ -48,7 +48,7 @@ PORT=8000
 pip install -r requirements_backend.txt
 ```
 
-### 3. ## Knowledge Base and PDF Ingestion
+### 3. Knowledge Base and PDF Ingestion
 
 The Navajeev AI chatbot uses Retrieval-Augmented Generation (RAG) to retrieve relevant information from a Pinecone vector database before generating responses through Ollama Cloud.
 
@@ -56,8 +56,8 @@ The Navajeev AI chatbot uses Retrieval-Augmented Generation (RAG) to retrieve re
 
 The initial knowledge base was created using:
 
-**Document:** `[JOURNEY OF THE FIRST 100 DAYS.pdf](https://github.com/user-attachments/files/32738356/JOURNEY.OF.THE.FIRST.100.DAYS.pdf)
-`
+**Document:** [JOURNEY OF THE FIRST 100 DAYS.pdf](https://github.com/user-attachments/files/32738442/JOURNEY.OF.THE.FIRST.100.DAYS.pdf)
+
 
 The document is used during offline ingestion and is not required when the deployed backend starts.
 The running backend connects directly to the existing Pinecone index without repeating ingestion.

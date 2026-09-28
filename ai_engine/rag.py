@@ -1,10 +1,4 @@
-﻿"""
-RAG Engine — Knowledge AI
-Handles the /ask endpoint using Ollama Local LLM
-Flow: question → Pinecone similarity search → context → Ollama → answer
-"""
-
-from services.pinecone_service import similarity_search
+﻿from services.pinecone_service import similarity_search
 from services.ollama_service import generate_with_ollama
 
 RAG_PROMPT = """You are a maternal health assistant helping women during pregnancy

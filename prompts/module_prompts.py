@@ -286,10 +286,7 @@ Return ONLY a valid JSON object matching these exact keys and structure:
 
 Return ONLY valid JSON. No markdown. No explanation outside the JSON."""
 
-
-# -------------------------------------------------------
 # ROUTER — maps module name to its prompt function
-# -------------------------------------------------------
 
 PROMPT_REGISTRY = {
     "dashboard": dashboard_prompt,

@@ -1,8 +1,3 @@
-"""
-Recommendation Engine — Smart Guidance AI
-Handles: /ai/recommend endpoint using Ollama Local LLM
-"""
-
 import json
 import re
 from prompts.module_prompts import get_prompt

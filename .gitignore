@@ -5,3 +5,5 @@ __pycache__/
 cache.json
 pinecone_cache_*.json
 *.pdf
+bot.py
+test_ollama_integration.py

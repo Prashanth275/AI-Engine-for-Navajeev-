@@ -21,7 +21,7 @@ from schemas.schemas import (
 )
 
 app = FastAPI(
-    title="Motherhood Companion AI Backend (Ollama Local)",
+    title="Motherhood Companion AI Backend (Ollama Cloud)",
     version="2.0.0"
 )
 
@@ -46,14 +46,9 @@ async def startup_event():
     
     health = check_ollama_health()
     if health.get("available"):
-        if health.get("model_installed"):
-            print(f"[STATUS] Ollama is connected and model '{model}' is ready.")
-        else:
-            print(f"[WARNING] Ollama is running, but model '{model}' is not installed.")
-            print(f"[ACTION REQUIRED] Run 'ollama pull {model}' in your command prompt.")
+        print(f"[STATUS] Ollama Cloud is connected. Model: '{model}'.")
     else:
-        print(f"[NOTICE] Ollama server is currently offline at {base_url}.")
-        print("[ACTION REQUIRED] Start Ollama by running 'ollama serve' or opening the Ollama desktop app.")
+        print(f"[NOTICE] Ollama Cloud is unavailable at {base_url}.")
 
     try:
         print("[VECTORSTORE] Initializing Pinecone vectorstore...")
@@ -69,8 +64,8 @@ async def root():
     base_url, model, *_ = get_ollama_config()
     health = check_ollama_health()
     
-    ollama_status = "connected" if health.get("available") and health.get("model_installed") else "offline_or_model_missing"
-    msg = f"Backend running | Ollama: {ollama_status} ({model} @ {base_url})"
+    ollama_status = "connected" if health.get("available") else "unavailable"
+    msg = f"Backend running | Ollama Cloud: {ollama_status} ({model} @ {base_url})"
     return HealthResponse(
         status="healthy",
         message=msg
@@ -100,7 +95,7 @@ async def ask_question(request: QuestionRequest):
 @app.post("/ai/insight", response_model=InsightResponse)
 async def get_insight(request: InsightRequest):
     """
-    Analyzes user tracker data and returns a structured insight using Ollama.
+    Analyzes user tracker data and returns a structured insight using Ollama Cloud.
 
     Supported modules:
     - sleep, wellbeing, feeding, growth, trimester, appointments, notifications, dashboard
@@ -131,7 +126,7 @@ async def get_insight(request: InsightRequest):
 @app.post("/ai/recommend", response_model=RecommendResponse)
 async def get_recommendation(request: RecommendRequest):
     """
-    Generates a personalized weekly guidance plan based on user profile using Ollama.
+    Generates a personalized weekly guidance plan based on user profile using Ollama Cloud.
     """
     try:
         data = request.model_dump(exclude_none=True)

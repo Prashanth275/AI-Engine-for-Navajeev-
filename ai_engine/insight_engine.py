@@ -1,7 +1,7 @@
 """
 Insight Engine — Tracker AI
-Handles: /ai/insight endpoint using Ollama Local LLM
-Flow: user tracker data → prompt template → Ollama → structured JSON insight
+Handles: /ai/insight endpoint using Ollama Cloud.
+Flow: tracker data → prompt template → Ollama Cloud → structured JSON insight.
 """
 
 import json
@@ -14,12 +14,10 @@ from services.ollama_service import generate_with_ollama
 def _parse_llm_json(raw_text: str) -> dict:
     cleaned = raw_text.strip()
     
-    # 1. Strip markdown code blocks ```json ... ``` or ``` ... ```
     match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
     if match:
         cleaned = match.group(1).strip()
 
-    # 2. Try direct json.loads
     try:
         res = json.loads(cleaned)
         if isinstance(res, dict):
@@ -27,7 +25,6 @@ def _parse_llm_json(raw_text: str) -> dict:
     except Exception:
         pass
 
-    # 3. Try finding outermost { ... }
     match_braces = re.search(r"\{[\s\S]*\}", cleaned)
     if match_braces:
         try:
@@ -37,7 +34,6 @@ def _parse_llm_json(raw_text: str) -> dict:
         except Exception:
             pass
 
-    # 4. Try repairing unclosed JSON (e.g. truncated closing brace/quote)
     start_brace = cleaned.find("{")
     if start_brace != -1:
         snippet = cleaned[start_brace:].strip()
@@ -50,7 +46,6 @@ def _parse_llm_json(raw_text: str) -> dict:
             except Exception:
                 pass
 
-    # 5. Regex field extraction fallback
     extracted = {}
     for k, v in re.findall(r'"([a-zA-Z0-9_]+)"\s*:\s*"(.*?)(?<!\\)"', cleaned, re.DOTALL):
         extracted[k] = v.replace(r'\"', '"').replace(r'\n', '\n').replace(r'\r', '')
@@ -104,7 +99,6 @@ def calculate_sleep_metrics(data: dict) -> dict:
             "target_reference": "7-9 hours per night" if subject == "mother" else "age-appropriate rest",
         }
 
-    # Sort chronologically by date
     sorted_logs = sorted(logs_list, key=lambda x: str(x.get("date", "")))
     num_days = len(sorted_logs)
 
@@ -217,7 +211,6 @@ def run_insight(module: str, data: dict) -> dict:
     cache_identifier = f"insight_{module}_{json.dumps(data, sort_keys=True)}"
     raw_response = generate_with_ollama(prompt, cache_identifier)
 
-    # Dashboard returns plain text, everything else returns JSON
     if module == "dashboard":
         return {"insight": raw_response, "module": module}
 
@@ -226,7 +219,6 @@ def run_insight(module: str, data: dict) -> dict:
         parsed["module"] = module
         return parsed
 
-    # Fallback to plain text wrapping if model output had no parseable JSON
     return {
         "module": module,
         "insight": raw_response,

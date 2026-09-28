@@ -48,10 +48,19 @@ PORT=8000
 pip install -r requirements_backend.txt
 ```
 
-### 3. Knowledge Base Ingestion (Offline Only)
+### 3. ## Knowledge Base and PDF Ingestion
 
-The 301 knowledge chunks are already generated and hosted in the Pinecone cloud index (`langchainvector-cloud`).
-The reference PDF is used solely for offline batch ingestion (`bot.py`) and is **not required at runtime or in production deployments**.
+The Navajeev AI chatbot uses Retrieval-Augmented Generation (RAG) to retrieve relevant information from a Pinecone vector database before generating responses through Ollama Cloud.
+
+### Knowledge Source
+
+The initial knowledge base was created using:
+
+**Document:** `[JOURNEY OF THE FIRST 100 DAYS.pdf](https://github.com/user-attachments/files/32738356/JOURNEY.OF.THE.FIRST.100.DAYS.pdf)
+`
+
+The document is used during offline ingestion and is not required when the deployed backend starts.
+The running backend connects directly to the existing Pinecone index without repeating ingestion.
 
 ---
 

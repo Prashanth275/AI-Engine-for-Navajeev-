@@ -229,62 +229,132 @@ Return only the JSON. No extra text."""
 def recommendation_prompt(data: dict) -> str:
     baby_age = data.get("baby_age_weeks")
     pregnancy_week = data.get("pregnancy_week")
-    sleep_pattern = data.get("sleep_pattern", "not provided")
-    feeding_pattern = data.get("feeding_pattern", "not provided")
-    mood_trend = data.get("mood_trend", "stable")
-    top_concern = data.get("top_concern", "general guidance")
+    sleep_pattern = data.get("sleep_pattern")
+    feeding_pattern = data.get("feeding_pattern")
+    mood_trend = data.get("mood_trend")
+    top_concern = data.get("top_concern")
 
-    stage_desc = []
-    if baby_age is not None:
-        stage_desc.append(f"Baby age: {baby_age} weeks")
-    if pregnancy_week is not None:
-        stage_desc.append(f"Pregnancy week: {pregnancy_week}")
-    stage_str = ", ".join(stage_desc) if stage_desc else "Maternal / infant care stage"
+    is_pregnancy = pregnancy_week is not None and baby_age is None
+    is_postpartum = baby_age is not None
+
+    profile_items = []
+    if is_pregnancy:
+        profile_items.append(f"- Stage: Pregnancy (Week {pregnancy_week})")
+    elif is_postpartum:
+        profile_items.append(f"- Stage: Postpartum (Baby is {baby_age} weeks old)")
+    else:
+        profile_items.append("- Stage: General maternal / infant care")
+
+    if sleep_pattern and str(sleep_pattern).strip().lower() not in ["none", "null", "not provided"]:
+        profile_items.append(f"- Sleep pattern: {sleep_pattern}")
+    else:
+        profile_items.append("- Sleep pattern: Not provided (do not assume or invent sleep metrics or physical symptoms)")
+
+    if is_postpartum:
+        if feeding_pattern and str(feeding_pattern).strip().lower() not in ["none", "null", "not provided"]:
+            profile_items.append(f"- Infant feeding pattern: {feeding_pattern}")
+        else:
+            profile_items.append("- Infant feeding pattern: Not provided (do not assume breastfeeding or formula)")
+    elif not is_pregnancy and feeding_pattern:
+        profile_items.append(f"- Feeding pattern: {feeding_pattern}")
+
+    if mood_trend and str(mood_trend).strip().lower() not in ["none", "null", "not provided"]:
+        profile_items.append(f"- Mother mood trend: {mood_trend}")
+    else:
+        profile_items.append("- Mother mood trend: Not provided")
+
+    if top_concern and str(top_concern).strip().lower() not in ["none", "null", "not provided", "general guidance"]:
+        profile_items.append(f"- Top concern: {top_concern}")
+    else:
+        profile_items.append("- Top concern: None specified")
+
+    profile_text = "\n".join(profile_items)
+
+    if is_pregnancy:
+        stage_rules = f"""STAGE DIRECTIVE (PREGNANCY — WEEK {pregnancy_week}):
+- The mother is currently PREGNANT at Week {pregnancy_week}. The baby is not yet born.
+- STRICTLY FORBIDDEN: Do NOT mention any infant or newborn care activities (NO tummy time, NO diapering, NO bottle/breastfeeding routines, NO stroller walks with baby, NO infant play, NO newborn sleep training).
+- "dev_activity" MUST be ONE gentle prenatal bonding or maternal relaxation activity for the pregnant mother (e.g. resting hands on belly while practicing calm, slow breathing, or listening to soothing music). Do NOT assume or describe observable fetal movements or reactions.
+- Avoid generic filler phrases (e.g. 'support your growing bump'). Focus directly on the practical wellness action (e.g. 'Start your day with a quiet moment of breathing or reflection').
+- Conservative Movement & Rest: Do NOT prescribe specific exercises, unusual movement instructions, awkward body positions (e.g. AVOID 'flick your feet', 'seated reclining with pillow under belly', specific yoga poses), or imply positions are curative. Use simple conservative phrasing (e.g. 'Find a comfortable, supported resting position', 'Try gentle movement if it feels comfortable for you', 'Use pillows for comfortable support')."""
+    else:
+        stage_rules = f"""STAGE DIRECTIVE (POSTPARTUM — BABY AGE: {baby_age} WEEKS):
+- The user is POSTPARTUM with an infant who is {baby_age} weeks old.
+- Balance infant care with maternal recovery and rest.
+- "dev_activity" MUST be exactly ONE age-appropriate, supervised awake bonding or developmental activity specifically suitable for a {baby_age}-week-old infant (e.g. supervised awake tummy time on a firm, flat mat, high-contrast visual tracking, or gentle responsive talking). Always specify tummy time as supervised and awake.
+- Do NOT turn daily_routine into infant developmental exercises. daily_routine is for maternal wellness, daily rhythm, and responsive caregiving habits.
+- Decouple maternal routines from feeding events: Do NOT anchor maternal self-care, journaling, or snacks to infant feeding events (e.g. AVOID 'As you wait for a bottle...', 'before or after feeds'). Frame maternal actions independently (e.g. 'When you have a quiet moment...').
+- If infant feeding pattern is not specified, do NOT assume breastfeeding vs. formula."""
+
+    concern_instruction = f"""TOP CONCERN GUIDANCE:
+- Address the user's top concern ({top_concern}) thoughtfully and faithfully as stated.
+- Keep user concerns distinct from feeding data: If the top concern is general (e.g. 'establishing a consistent daily rhythm' or 'sleep quality'), do NOT automatically conflate or rewrite it into an infant feeding concern (such as 'baby feeding rhythm') simply because feeding data is present.""" if (top_concern and str(top_concern).strip().lower() not in ["none", "null", "not provided", "general guidance"]) else """TOP CONCERN GUIDANCE:
+- No specific concern provided. Provide balanced, encouraging stage-appropriate guidance without fabricating problems."""
 
     return f"""You are a compassionate maternal and infant health AI assistant.
-Generate personalized, supportive weekly guidance based strictly on the provided profile.
+Generate grounded, supportive weekly guidance based strictly on the provided profile.
 
 User Profile:
-- Stage: {stage_str}
-- Sleep pattern: {sleep_pattern}
-- Feeding pattern: {feeding_pattern}
-- Mother mood trend: {mood_trend}
-- Top concern: {top_concern}
+{profile_text}
 
-Strict Grounding & Quality Rules:
-- Use ONLY information provided in the user profile above.
-- Do NOT invent facts, symptoms, diagnoses, or clinical conditions about the mother or baby.
-- Do NOT invent exact clock times (e.g., do NOT mention times like "7:00 AM", "5:00 PM").
-- Do NOT create a rigid feeding or sleep timetable; keep suggestions flexible, cue-based, and responsive.
-- Do NOT invent arbitrary durations, quantities, or strict numerical measurements unless specified in user data.
-- Do NOT present generated recommendations as if they are past logged user data.
-- Ensure "dev_activity" is strictly appropriate for the baby's stated age in weeks (or pregnancy stage).
-- Ensure "top_concern" ({top_concern}) directly and meaningfully influences "daily_routine", "dev_activity", and "weekly_focus".
-- If a profile field is not provided, do not pretend that information is known.
-- For "nutrition_tips", provide general, supportive dietary suggestions only; do not invent medical diets or clinical requirements.
-- Avoid all medical diagnosis or treatment claims.
+{stage_rules}
+
+{concern_instruction}
+
+STRICT QUALITY & SAFETY CONSTRAINTS (MANDATORY):
+1. FLEXIBLE DAILY ROUTINE (NO FIXED DAYPART SEQUENCING):
+   - In daily_routine, DO NOT use rigid daypart prefixes or fixed schedule labels (e.g. AVOID 'Morning: ...', 'Afternoon: ...', 'Evening: ...', 'At breakfast...', 'At lunch...', 'At bedtime...').
+   - Use flexible, adaptable language instead (e.g. 'When you have a quiet moment...', 'During a calm part of the day...', 'When you have an opportunity...', 'As you wind down...', 'Whenever it feels comfortable...').
+2. NO HERBAL DRINKS OR REMEDIES:
+   - NEVER spontaneously recommend herbal tea, herbal water, herbal remedies, or unverified plant-based infusions.
+   - For hydration, recommend plain water, fluids according to thirst, or ordinary balanced food-based hydration. Do not invent medical benefits from beverages.
+3. NO INFERRED PHYSICAL SYMPTOMS OR EMOTIONAL CONDITIONS:
+   - When sleep data or mood is logged, do NOT invent physical symptoms (such as fatigue, pain, dizziness, weakness, exhaustion) unless explicitly logged. (Use 'When you need a moment to reset...' instead of 'When you notice faint fatigue...').
+   - Do NOT label unsupplied emotional states (such as isolation, loneliness, anxiety, depression) unless explicitly logged. (Use 'Invite a trusted friend or family member to talk or help with a small task' instead of 'easing feelings of isolation').
+   - Do NOT diagnose any medical or mental health conditions.
+4. NO INVENTED QUANTITIES OR DURATIONS:
+   - DO NOT invent numerical durations (e.g. "5 minutes", "20 minutes", "15-minute walks").
+   - DO NOT invent numerical quantities, frequencies, or measurements (e.g. "8 cups of water", "2 liters", "3 times a day", "30g protein").
+   - Use qualitative, self-paced phrasing (e.g. "a brief pause", "a comfortable period", "hydrate regularly according to thirst", "include balanced nourishment across your meals", "rest as needed").
+5. NO UNSUPPORTED PHYSIOLOGICAL OR BENEFIT CLAIMS:
+   - DO NOT make unsupported physiological or benefit claims (e.g. claiming foods or routines 'support joint comfort', 'reduce inflammation', 'support circulation', 'maintain milk supply', 'boost breastmilk production', 'support fetal development', or 'prevent fatigue') unless directly justified by supplied context.
+   - Use neutral, practical wording (e.g. 'Choose a varied combination of foods that provides steady nourishment and energy', 'Stay well hydrated with water whenever you feel thirsty').
+6. NO ASSUMED FETAL RESPONSES & NO GENERIC PREGNANCY FILLER:
+   - In pregnancy, DO NOT state that the baby kicks or moves in response to maternal actions. Keep bonding grounded in the mother's own mindful connection and calming rest.
+   - Avoid generic filler phrases like 'support your growing bump'. Focus directly on the practical wellness action.
+7. SPARSE DATA DISCIPLINE:
+   - If data is missing or not provided, do NOT fabricate symptoms, routines, or metrics. Provide simple, supportive, stage-appropriate baseline guidance.
+8. SECTION PURPOSES & VARIETY:
+   - weekly_focus: Exactly 1 clear, encouraging overarching focus sentence for this week.
+   - daily_routine: Exactly 3 practical, flexible habits for maternal wellness, daily rhythm, and responsive care. Avoid rigid timetables, daypart labels, arbitrary durations, or multiple infant developmental exercises.
+   - nutrition_tips: Exactly 3 realistic, balanced food and hydration suggestions (water/regular foods, qualitative, neutral benefits, NO herbal teas or remedies).
+   - self_care: Exactly 2 restorative maternal suggestions.
+   - dev_activity: Exactly 1 stage-appropriate activity (prenatal bonding/relaxation for pregnancy OR supervised awake activity for infant).
+   - Do NOT repeat identical advice across sections.
+9. FORMATTING:
+   - Return strict, valid JSON only. Use single quotes or simple words inside text values (no unescaped double quotes).
 
 Return ONLY a valid JSON object matching these exact keys and structure:
 {{
+  "weekly_focus": "One clear, encouraging overarching focus sentence for this week",
   "daily_routine": [
-    "Practical, flexible routine habit 1 addressing {top_concern}",
-    "Practical, flexible routine habit 2",
-    "Practical, flexible routine habit 3"
+    "Practical, flexible daily habit 1",
+    "Practical, flexible daily habit 2",
+    "Practical, flexible daily habit 3"
   ],
   "nutrition_tips": [
-    "Supportive nutrition tip 1",
-    "Supportive nutrition tip 2",
-    "Supportive nutrition tip 3"
+    "Practical nutrition or hydration tip 1",
+    "Practical nutrition or hydration tip 2",
+    "Practical nutrition or hydration tip 3"
   ],
   "self_care": [
-    "Realistic, brief maternal self-care suggestion 1",
-    "Realistic, brief maternal self-care suggestion 2"
+    "Restorative maternal self-care suggestion 1",
+    "Restorative maternal self-care suggestion 2"
   ],
-  "dev_activity": "One age-appropriate bonding or developmental activity tailored to baby age and {top_concern}",
-  "weekly_focus": "One clear, encouraging overarching focus sentence for this week"
+  "dev_activity": "One focused stage-appropriate activity"
 }}
 
-Return ONLY valid JSON. No markdown. No explanation outside the JSON."""
+Return ONLY valid JSON. No markdown fences. No extra commentary."""
 
 # ROUTER — maps module name to its prompt function
 

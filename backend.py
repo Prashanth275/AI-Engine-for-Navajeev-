@@ -75,7 +75,7 @@ async def root():
 @app.post("/ask", response_model=QuestionResponse)
 async def ask_question(request: QuestionRequest):
     try:
-        result = run_rag(vectorstore, request.question)
+        result = run_rag(vectorstore, request.question, request.user_context)
 
         return QuestionResponse(
             answer=result["answer"],

@@ -130,17 +130,20 @@ def is_refusal_response(text: str) -> bool:
     return any(p in lowered for p in refusal_patterns)
 
 
-def generate_with_ollama(prompt: str, question: Optional[str] = None) -> str:
+def generate_with_ollama(prompt: str, question: Optional[str] = None, user_context: Optional[str] = None) -> str:
     """
     Send a prompt to Ollama (Cloud or Local) and return the text response.
     Enforces clean output and caches response in cache.json.
-    Cache key depends on model, question/input identifier, and the full prompt (including retrieved context).
+    Cache key depends on model, question/input identifier (including user_context if present), and the full prompt.
     """
     base_url, model, api_key = get_ollama_config()
 
-    cache_input = question if question else prompt
+    if user_context and user_context.strip() and question:
+        cache_input = f"{user_context.strip()}:{question}"
+    else:
+        cache_input = question if question else prompt
     clean_q = normalize_query(cache_input)
-    # Cache key depends on model, normalized query, and prompt (retrieved context)
+    # Cache key depends on model, normalized query with context, and prompt (retrieved context)
     cache_key = hashlib.md5(f"{model}:{clean_q}:{prompt}".encode("utf-8")).hexdigest()
 
     if cache_key in cache:

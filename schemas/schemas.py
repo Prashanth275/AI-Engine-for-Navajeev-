@@ -4,6 +4,7 @@ from typing import Optional, Any
 
 class QuestionRequest(BaseModel):
     question: str
+    user_context: Optional[str] = None
     include_context: bool = True
 
 

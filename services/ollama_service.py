@@ -105,16 +105,43 @@ def normalize_response_text(text: str) -> str:
     return text
 
 
+def is_refusal_response(text: str) -> bool:
+    """
+    Checks if LLM response is a document-not-found refusal.
+    """
+    if not text or not isinstance(text, str):
+        return False
+    lowered = text.lower()
+    refusal_patterns = [
+        "couldn't find this information in the document",
+        "could not find this information in the document",
+        "couldn't find the answer in this document",
+        "could not find the answer in this document",
+        "couldn't find any information",
+        "could not find any information",
+        "not present in the context",
+        "not found in the document",
+        "information is not present in the document",
+        "i couldn't find this information",
+        "i could not find this information",
+        "i couldn't find the answer",
+        "i could not find the answer",
+    ]
+    return any(p in lowered for p in refusal_patterns)
+
+
 def generate_with_ollama(prompt: str, question: Optional[str] = None) -> str:
     """
     Send a prompt to Ollama (Cloud or Local) and return the text response.
     Enforces clean output and caches response in cache.json.
+    Cache key depends on model, question/input identifier, and the full prompt (including retrieved context).
     """
     base_url, model, api_key = get_ollama_config()
 
     cache_input = question if question else prompt
     clean_q = normalize_query(cache_input)
-    cache_key = hashlib.md5(f"{model}:{clean_q}".encode("utf-8")).hexdigest()
+    # Cache key depends on model, normalized query, and prompt (retrieved context)
+    cache_key = hashlib.md5(f"{model}:{clean_q}:{prompt}".encode("utf-8")).hexdigest()
 
     if cache_key in cache:
         print(f"[CACHE HIT] Returning cached response for key: {cache_key[:8]}...")
@@ -185,11 +212,15 @@ def generate_with_ollama(prompt: str, question: Optional[str] = None) -> str:
                 # Normalize special Unicode spaces and typographic characters
                 answer = normalize_response_text(answer)
 
-                cache[cache_key] = answer
-                if len(cache) > 1000:
-                    first_key = next(iter(cache))
-                    del cache[first_key]
-                save_cache()
+                # Only cache valid answers, never cache refusal responses
+                if not is_refusal_response(answer):
+                    cache[cache_key] = answer
+                    if len(cache) > 1000:
+                        first_key = next(iter(cache))
+                        del cache[first_key]
+                    save_cache()
+                else:
+                    print(f"[CACHE NOTICE] Refusal response detected ('{answer[:40]}...'). Skipping cache save.")
 
                 return answer
             else:

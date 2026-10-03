@@ -3,7 +3,7 @@ import json
 import math
 import urllib.request
 from typing import List, Tuple, Dict, Any
-from utils.text_utils import normalize_query
+from utils.text_utils import normalize_query, rerank_candidates
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from pinecone import Pinecone
@@ -95,9 +95,10 @@ def simple_similarity(a: str, b: str) -> float:
     return len(set_a & set_b) / len(union)
 
 
-def similarity_search(vectorstore, query: str, k: int = 5) -> List[Tuple[str, Dict[str, Any]]]:
+def similarity_search(vectorstore, query: str, k: int = 12) -> List[Tuple[str, Dict[str, Any]]]:
     """
-    Run similarity search against Pinecone vector store using Pinecone Hosted Inference (llama-text-embed-v2, 768 dim).
+    Run broad similarity search (k candidates) against Pinecone vector store using Pinecone Hosted Inference
+    (llama-text-embed-v2, 768 dim), then perform hybrid lexical-temporal reranking to return top 5 passages.
     Returns list of (content, metadata) tuples.
     """
     if vectorstore is None:
@@ -148,8 +149,8 @@ def similarity_search(vectorstore, query: str, k: int = 5) -> List[Tuple[str, Di
             detail="Failed to generate query embedding via Pinecone Hosted Inference (llama-text-embed-v2)."
         )
 
-    # 5. Query Pinecone
-    print("[PINECONE API CALL] Executing similarity search on langchainvector-cloud...")
+    # 5. Query Pinecone for Candidate Pool (k=12)
+    print(f"[PINECONE API CALL] Executing similarity search (k={k}) on langchainvector-cloud...")
     try:
         response = vectorstore.query(
             vector=query_embedding,
@@ -157,18 +158,22 @@ def similarity_search(vectorstore, query: str, k: int = 5) -> List[Tuple[str, Di
             include_metadata=True
         )
 
-        formatted = []
+        candidates = []
         for match in response.get("matches", []):
             metadata = match.get("metadata", {})
             text_content = metadata.get("text", "")
-            formatted.append((text_content, metadata))
+            dense_score = match.get("score", 0.0)
+            candidates.append((text_content, metadata, dense_score))
+
+        # 6. Hybrid Lexical & Temporal Reranking to top 5 passages
+        reranked_top5 = rerank_candidates(query, candidates, top_n=5)
 
         # Update Cache
         if not any(item.get("query") == query_clean for item in pinecone_cache):
             pinecone_cache.append({
                 "query": query_clean,
                 "embedding": [round(x, 4) for x in query_embedding],
-                "result": formatted
+                "result": reranked_top5
             })
 
         if len(pinecone_cache) > 500:
@@ -176,7 +181,7 @@ def similarity_search(vectorstore, query: str, k: int = 5) -> List[Tuple[str, Di
 
         save_pinecone_cache()
 
-        return formatted
+        return reranked_top5
     except Exception as e:
         raise HTTPException(
             status_code=500,

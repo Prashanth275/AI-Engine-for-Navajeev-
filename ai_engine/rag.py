@@ -1,4 +1,4 @@
-﻿from services.pinecone_service import similarity_search
+from services.pinecone_service import similarity_search
 from services.ollama_service import generate_with_ollama
 
 RAG_PROMPT = """You are a maternal health assistant helping women during pregnancy
@@ -20,7 +20,7 @@ Give a clear and well-formatted helpful answer based strictly on the context.
 
 
 def run_rag(vectorstore, question: str) -> dict:
-    results = similarity_search(vectorstore, question, k=5)
+    results = similarity_search(vectorstore, question, k=12)
 
     context = "\n---\n".join([content for content, _ in results])
 
